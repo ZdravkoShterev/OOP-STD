@@ -1,0 +1,341 @@
+using System;
+using System.Collections.Generic;
+
+public class Program
+{
+    public static void Main()
+    {
+        try
+        {
+            Console.Write("Enter number of battles: ");
+            if (!int.TryParse(Console.ReadLine(), out int rounds) || rounds <= 0)
+            {
+                throw new ArgumentException("Number of battles must be a positive integer.");
+            }
+
+            int oneWins = 0, twoWins = 0;
+            Hero one, two;
+
+            for (int i = 0; i < rounds; i++)
+            {
+                one = SelectHero("First");
+                two = SelectHero("Second");
+
+                Console.WriteLine($"Arena fight between: {one.Name} and {two.Name}");
+                Arena arena = new Arena(one, two);
+                Hero winner = arena.Battle();
+                Console.WriteLine($"Winner is: {winner.Name}");
+
+                if (winner == one)
+                {
+                    oneWins++;
+                }
+                else
+                {
+                    twoWins++;
+                }
+            }
+
+            Console.WriteLine();
+            Console.WriteLine($"One has {oneWins} wins.");
+            Console.WriteLine($"Two has {twoWins} wins.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+        finally
+        {
+            Console.ReadLine();
+        }
+    }
+
+    private static Hero SelectHero(string player)
+    {
+        Console.WriteLine($"{player} player, choose your hero:");
+        Console.WriteLine("1. Knight");
+        Console.WriteLine("2. Rogue");
+        Console.WriteLine("3. Mage");
+        Console.WriteLine("4. Archer");
+
+        string choice = Console.ReadLine();
+        Weapon weapon = SelectWeapon();
+
+        return choice switch
+        {
+            "1" => new Knight($"{player}'s Knight", weapon),
+            "2" => new Rogue($"{player}'s Rogue", weapon),
+            "3" => new Mage($"{player}'s Mage", weapon),
+            "4" => new Archer($"{player}'s Archer", weapon),
+            _ => throw new ArgumentException("Invalid hero choice.")
+        };
+    }
+
+    private static Weapon SelectWeapon()
+    {
+        Console.WriteLine("Choose your weapon:");
+        Console.WriteLine("1. Sword");
+        Console.WriteLine("2. Dagger");
+        Console.WriteLine("3. Staff");
+
+        string choice = Console.ReadLine();
+        return choice switch
+        {
+            "1" => new Sword(),
+            "2" => new Dagger(),
+            "3" => new Staff(),
+            _ => throw new ArgumentException("Invalid weapon choice.")
+        };
+    }
+}
+
+public class Arena
+{
+    public Hero HeroA { get; }
+    public Hero HeroB { get; }
+
+    public Arena(Hero a, Hero b)
+    {
+        HeroA = a ?? throw new ArgumentNullException(nameof(a), "HeroA cannot be null.");
+        HeroB = b ?? throw new ArgumentNullException(nameof(b), "HeroB cannot be null.");
+    }
+
+    public Hero Battle()
+    {
+        Hero attacker, defender;
+        if (Random.Shared.Next(2) == 0)
+        {
+            attacker = HeroA;
+            defender = HeroB;
+        }
+        else
+        {
+            attacker = HeroB;
+            defender = HeroA;
+        }
+
+        while (true)
+        {
+            int damage = attacker.Attack();
+            defender.TakeDamage(damage);
+            Console.WriteLine($"{attacker.Name} attacks {defender.Name} for {damage} damage.");
+            Console.WriteLine($"{defender.Name} has {defender.Health} health left.");
+
+            if (defender.IsDead)
+            {
+                Console.WriteLine($"{defender.Name} is dead!");
+                return attacker;
+            }
+
+            (attacker, defender) = (defender, attacker);
+        }
+    }
+}
+
+public abstract class Hero
+{
+    public string Name { get; }
+    public int Health { get; private set; }
+    public int Strength { get; }
+    protected int StartingHealth { get; }
+    public Weapon Weapon { get; }
+
+    public bool IsDead => Health <= 0;
+
+    public Hero(string name, Weapon weapon)
+    {
+        Name = name ?? throw new ArgumentNullException(nameof(name), "Hero name cannot be null.");
+        Weapon = weapon ?? throw new ArgumentNullException(nameof(weapon), "Weapon cannot be null.");
+        Health = 500;
+        StartingHealth = Health;
+        Strength = 100;
+    }
+
+    public virtual int Attack()
+    {
+        return Weapon.ApplySpecialAbility((Strength * Random.Shared.Next(80, 121)) / 100);
+    }
+
+    public virtual void TakeDamage(int incomingDamage)
+    {
+        if (incomingDamage < 0) return;
+        Health -= incomingDamage;
+    }
+
+    protected bool ThrowDice(int chance)
+    {
+        int dice = Random.Shared.Next(101);
+        return dice <= chance;
+    }
+
+    protected void Heal(int value)
+    {
+        Health += value;
+        if (Health > StartingHealth) Health = StartingHealth;
+    }
+}
+
+public class Knight : Hero
+{
+    private const int BlockDamageChance = 10;
+    private const int ExtraDamageChance = 5;
+
+    public Knight(string name, Weapon weapon) : base(name, weapon) { }
+
+    public override void TakeDamage(int incomingDamage)
+    {
+        int damageReduceCoef = Random.Shared.Next(20, 61);
+        incomingDamage -= (incomingDamage * damageReduceCoef) / 100;
+
+        if (ThrowDice(BlockDamageChance)) incomingDamage = 0;
+
+        base.TakeDamage(incomingDamage);
+    }
+
+    public override int Attack()
+    {
+        int attack = base.Attack();
+        if (ThrowDice(ExtraDamageChance)) attack = attack * 150 / 100;
+        return attack;
+    }
+}
+
+public class Rogue : Hero
+{
+    private const int TripleDamageMagicLastDigit = 5;
+    private const int HealEachNthRound = 3;
+    private int attackCount;
+
+    public Rogue(string name, Weapon weapon) : base(name, weapon)
+    {
+        attackCount = 0;
+    }
+
+    public override int Attack()
+    {
+        int attack = base.Attack();
+        if (attack % 25 == TripleDamageMagicLastDigit)
+        {
+            attack *= 3;
+        }
+        attackCount++;
+        if (attackCount % HealEachNthRound == 0 && ThrowDice(25))
+        {
+            Heal(StartingHealth * 50 / 100);
+        }
+        return attack;
+    }
+
+    public override void TakeDamage(int incomingDamage)
+    {
+        if (ThrowDice(30)) incomingDamage = 0;
+        base.TakeDamage(incomingDamage);
+    }
+}
+
+public class Mage : Hero
+{
+    public Mage(string name, Weapon weapon) : base(name, weapon) { }
+
+    public override int Attack()
+    {
+        int attack = base.Attack();
+        if (ThrowDice(20))
+        {
+            attack *= 2;
+        }
+        return attack;
+    }
+
+    public override void TakeDamage(int incomingDamage)
+    {
+        if (ThrowDice(25))
+        {
+            incomingDamage = 0;
+        }
+        base.TakeDamage(incomingDamage);
+    }
+}
+
+public class Archer : Hero
+{
+    public Archer(string name, Weapon weapon) : base(name, weapon) { }
+
+    public override int Attack()
+    {
+        int attack = base.Attack();
+        if (ThrowDice(15))
+        {
+            attack *= 3;
+        }
+        return attack;
+    }
+
+    public override void TakeDamage(int incomingDamage)
+    {
+        if (ThrowDice(20))
+        {
+            incomingDamage = 0;
+        }
+        base.TakeDamage(incomingDamage);
+    }
+}
+
+public abstract class Weapon
+{
+    public string Name { get; }
+    public int DamageBoost { get; }
+
+    public Weapon(string name, int damageBoost)
+    {
+        Name = name ?? throw new ArgumentNullException(nameof(name), "Weapon name cannot be null.");
+        DamageBoost = damageBoost;
+    }
+
+    public virtual int ApplySpecialAbility(int baseDamage)
+    {
+        return baseDamage + DamageBoost;
+    }
+}
+
+public class Sword : Weapon
+{
+    public Sword() : base("Sword", 20) { }
+
+    public override int ApplySpecialAbility(int baseDamage)
+    {
+        if (Random.Shared.Next(100) < 10)
+        {
+            baseDamage = baseDamage * 150 / 100;
+        }
+        return baseDamage + DamageBoost;
+    }
+}
+
+public class Dagger : Weapon
+{
+    public Dagger() : base("Dagger", 15) { }
+
+    public override int ApplySpecialAbility(int baseDamage)
+    {
+        if (Random.Shared.Next(100) < 20)
+        {
+            return baseDamage + DamageBoost;
+        }
+        return baseDamage;
+    }
+}
+
+public class Staff : Weapon
+{
+    public Staff() : base("Staff", 25) { }
+
+    public override int ApplySpecialAbility(int baseDamage)
+    {
+        if (Random.Shared.Next(100) < 15)
+        {
+            baseDamage *= 2;
+        }
+        return baseDamage + DamageBoost;
+    }
+}
